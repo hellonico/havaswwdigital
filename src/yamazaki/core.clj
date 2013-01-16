@@ -1,24 +1,19 @@
 (ns yamazaki.core
+	(:use clojure.java.io)
+	(:require [yamazaki.box :as box])
 	(:require [ontodev.excel :as xls]))
 
-(def workbook (xls/load-workbook "test/yamazaki.xlsx"))
-(def sheet0 (.getSheetAt workbook 0))
-(def lines (iterator-seq (.rowIterator sheet0)))
-(count lines)
+(def WORKBOOK "test/yamazaki.xlsx")
+(def OUTPUT "output")
 
-; base folder 
-(def dropbox-url "https://www.dropbox.com/sh/o3vi0b9kikq3we6/4uHNal-oh2")
-
-; sample url
-; https://www.dropbox.com/sh/o3vi0b9kikq3we6/X95YNRbPgM/JP/Saiko_Osara/12-03-MON#f:2012-12-02%2019.22.31.jpg
-
-; http://poi.apache.org/apidocs/org/apache/poi/xssf/usermodel/XSSFRow.html
+(defn parse-lines[]
+	(iterator-seq (.rowIterator (.getSheetAt (xls/load-workbook WORKBOOK) 0))))
 
 ; execute
 (defn export-line[line func]
 
 	)
-(doseq [i (range 1 17)] (println i))
+; (doseq [i (range 1 17)] (println i))
 
 ; -> D&E, F&G, H&I, J&K, L&M, N&O, P&Q 
 ; 1 line = 1 directory 
@@ -26,15 +21,48 @@
 (defn debug-lines[line]
 	(doseq [i (range 16)] (println i (.getCell line i))))
 
-(defn process-line[line]
-	{ :directory  			(.getStringCellValue (.getCell line 1))
-	  
-
+(defn get-file-pair[line ind]
+	{:org (.getStringCellValue (.getCell line ind))
+	 :new (.getStringCellValue (.getCell line (+ 1 ind)))
 	})
 
-;  (.getStringCellValue (.getCell (nth lines 3) 4))
-;  (doseq [i (range 1 17)] (println i))
-;  (nth lines 10)
+(defn process-line[line]
+	{ :directory  			(.getStringCellValue (.getCell line 1))
+	  :files [
+	  (get-file-pair line 3)
+	  (get-file-pair line 5)
+	  (get-file-pair line 7)
+	  (get-file-pair line 9)
+	  (get-file-pair line 11)
+	  (get-file-pair line 13)
+	  ]
+	})
+
+(defn download-file[api file directory-name]
+	(box/get-one-file 
+		api 
+		(str (file :org))
+		(str directory-name "/" (file :new))))
+
+(defn export-line[api line]
+	(let [ 
+		metadata (process-line line)
+		directory-name (str OUTPUT "/" (metadata :directory))
+		directory (as-file directory-name)
+		files (metadata :files)
+		]
+		(println "-")
+		(println "Downloading to Folder" directory-name)
+		(.mkdir directory)
+		(doseq [file files]
+			(println "Downloading file:" file)
+			(download-file api file directory-name)
+			)))
 
 (defn -main[& args]
-	(println "Exporting:" (first args)))
+	(println "Exporting:" (first args))
+	(.mkdir (as-file OUTPUT))
+	(def lines (parse-lines))
+	(def api (box/init-api))
+	(doseq [row (range 1 36)]
+		(export-line api (nth lines row))))

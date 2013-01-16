@@ -1,42 +1,77 @@
 (ns yamazaki.box
-	(:import [com.dropbox.client2.session WebAuthSession AccessTokenPair AppKeyPair Session])
-	)
+	(:use clojure.java.io)
+	(:import [com.dropbox.client2.session 
+				WebAuthSession 
+				AccessTokenPair 
+				AppKeyPair 
+				Session]))
 
-(def appkey ["imo5iffx3z2sxoa" "mxx8d0htzviayvi"])
-(def TIMEOUT 5000)
+; static app key
+(def appkey ["mwtv6r6p11oblfj" "ahh9fvhgnuz3xnb"])
+(def STATE_FILE "keypair.clj")
+(def TIMEOUT 8000)
 
+; basic keypair
+(defn get-keypair[]
+	(AppKeyPair. (first appkey) (second appkey)))
+
+; init dropbox session
+(defn init-session[]
+	(WebAuthSession. (get-keypair) com.dropbox.client2.session.Session$AccessType/DROPBOX))
+
+; save keypair
+(defn save-state[pair]
+	(spit STATE_FILE {:key (.key pair) :secret (.secret pair)}))
+
+; load keypair
+(defn load-state[]
+	(let [keypair (read-string (slurp STATE_FILE))]
+	 (AccessTokenPair. (keypair :key) (keypair :secret))))
+
+; authenticate
 (defn authenticate[]
-	(let 
-	[
-	 keypair (AppKeyPair. (first appkey) (second appkey))
-	 session (WebAuthSession. keypair com.dropbox.client2.session.Session$AccessType/DROPBOX)
-	 info (.getAuthInfo session)
-	 url (.url info)
-	]
+	(let [	session (init-session)
+	 		info (.getAuthInfo session)
+	 		url (.url info)]
 	; user visit URL
 	(.browse (java.awt.Desktop/getDesktop) (java.net.URI. (.url info)))
+	; wait some time, hoping the user can click
 	(Thread/sleep TIMEOUT)
 	; ask for auth
-	(.retrieveWebAccessToken session (.requestTokenPair info))	
-	(.getAccessTokenPair session)
-	(com.dropbox.client2.DropboxAPI. session)
-	
-	))
+	(.retrieveWebAccessToken session (.requestTokenPair info))
+	; store session
+	(save-state (.getAccessTokenPair session))
+	; return session
+	(com.dropbox.client2.DropboxAPI. session)))
 
-; WebAuthSession session = new WebAuthSession(state.appKey, WebAuthSession.AccessType.APP_FOLDER);
-; session.setAccessTokenPair(state.accessToken);
-; DropboxAPI<?> client = new DropboxAPI<WebAuthSession>(session);
+; reuse tokens
+(defn re-authenticate[]
+	(let [session (init-session)]
+	(.setAccessTokenPair session (load-state))
+	(com.dropbox.client2.DropboxAPI. session)))
 
-; -> "57022796"
-; get tokens
+; init dropbox api
+(defn init-api[]
+	(if (.exists (as-file STATE_FILE))
+		(re-authenticate)
+		(authenticate)))
 
+; search for a file
+; use blank characters for regexp
+(defn search-file[api query]
+	(.search api "/" query 0 false))
 
-(def tokens ["m3nb6ig9u2yajof" "nf908rsg156hfz6"])
-; "ym76ducq2seyht5", secret="7zm7oqijw163qqx"}>
-; (spit "state.json" tokens)
+; 
+(defn get-file[api entry localfilename]
+	(with-open [w (clojure.java.io/output-stream localfilename)] 
+		(.getFile api 
+			(.path entry)
+			(.rev entry)
+			w 
+			nil)))
 
-(def api (com.dropbox.client2.DropboxAPI. session))
-
-(.search (com.dropbox.client2.DropboxAPI. session) "/" "*.jpg" 0 false)
-
-; file:///Users/niko/Downloads/dropbox-java-sdk-1.5.3/docs/index.html
+(defn get-one-file[api query localname]
+	(try 
+		(get-file api (first (search-file api query)) localname)
+	(catch Exception e
+	 	(println "Cannot download:" query))))
