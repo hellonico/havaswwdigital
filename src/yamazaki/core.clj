@@ -12,15 +12,6 @@
 (defn parse-lines[workbook]
 	(iterator-seq (.rowIterator (.getSheetAt (xls/load-workbook workbook) 0))))
 
-; execute
-(defn export-line[line func]
-
-	)
-; (doseq [i (range 1 17)] (println i))
-
-; -> D&E, F&G, H&I, J&K, L&M, N&O, P&Q 
-; 1 line = 1 directory 
-
 (defn debug-lines[line]
 	(doseq [i (range 16)] (println i (.getCell line i))))
 
@@ -29,6 +20,8 @@
 	 :new (.getStringCellValue (.getCell line (+ 1 ind)))
 	})
 
+; refactor this to use a rename mode, and also a start column
+; make this method as a parameter
 (defn process-line[line]
 	{ :directory  			(.getStringCellValue (.getCell line 1))
 	  :files [
@@ -62,6 +55,7 @@
 		(bar/update-progress bar2 (/ 0 total))
 
 		(.mkdir directory)
+
 		(loop [files files i 0]
 			(when (seq files)
 			  (download-file api (first files) directory-name)
@@ -71,10 +65,13 @@
 
 (defn -main[& args]
 	(println "Exporting:" (first args))
+	; make sure output directory exist
 	(.mkdir (as-file OUTPUT))
+
 	(def lines (parse-lines (first args)))
+	(def total-lines (inc (count lines)) )
 	(def api (box/init-api))
 	(def bar1 (bar/make-progress-bar "Total: " 20 3))
-	(doseq [row (range 1 36)]
-		(bar/update-progress bar1 (/ row 36))
+	(doseq [row (range 1 total-lines)]
+		(bar/update-progress bar1 (/ row total-lines))
 		(export-line api (nth lines row))))
