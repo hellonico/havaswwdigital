@@ -16,9 +16,13 @@
 	(doseq [i (range 16)] (println i (.getCell line i))))
 
 (defn get-file-pair[line ind]
-	{:org (.getStringCellValue (.getCell line ind))
-	 :new (.getStringCellValue (.getCell line (+ 1 ind)))
-	})
+	(let [
+		org-v (.getStringCellValue (.getCell line ind))
+		new-v (.getStringCellValue (.getCell line (+ 1 ind)))
+	]
+	{:org org-v
+	 :new (if (empty? new-v) org-v new-v)
+	}))
 
 ; refactor this to use a rename mode, and also a start column
 ; make this method as a parameter
@@ -35,10 +39,11 @@
 	})
 
 (defn download-file[api file directory-name]
-	(box/get-one-file 
-		api 
-		(str (file :org))
-		(str directory-name "/" (file :new))))
+	(if (not (empty? (file :org)))
+		(box/get-one-file 
+		 api 
+		 (str (file :org))
+		 (str directory-name "/" (file :new)))))
 
 (def bar2 (bar/make-progress-bar "" 20 2))
 

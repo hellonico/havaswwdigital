@@ -95,4 +95,4 @@
 		(try 
 			(get-file api (first (search-file api query)) localname)
 		(catch Exception e
-	 		(timbre/error "Cannot download:" query " to " localname)))))
+	 		(timbre/error "Cannot download:" query " to " localname "[" (.getMessage e) "]")))))
