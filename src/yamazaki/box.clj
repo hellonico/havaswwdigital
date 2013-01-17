@@ -1,5 +1,7 @@
 (ns yamazaki.box
 	(:use clojure.java.io)
+	(:use [taoensso.timbre :as timbre])
+	(:require [yamazaki.bar :as bar])
 	(:import [com.dropbox.client2.session 
 				WebAuthSession 
 				AccessTokenPair 
@@ -61,17 +63,36 @@
 (defn search-file[api query]
 	(.search api "/" query 0 false))
 
+(def bar3 (bar/make-progress-bar "" 20 1))
+
 ; 
 (defn get-file[api entry localfilename]
+
+	(let 
+		[
+		total (.bytes entry)
+		counter (atom 0)
+		pl (proxy [com.dropbox.client2.ProgressListener] [] 
+			 (progresInterval [] 100)
+             (onProgress [bytes total] 
+             	(swap! counter (partial + bytes))
+             	(bar/update-progress bar3 (/ bytes total))
+             	))
+		]
+	(bar/update-label bar3 (.getName (as-file localfilename)) 20)
+	(bar/update-progress bar3 (/ 0 total))
+
 	(with-open [w (clojure.java.io/output-stream localfilename)] 
 		(.getFile api 
 			(.path entry)
 			(.rev entry)
 			w 
-			nil)))
+			pl))))
 
 (defn get-one-file[api query localname]
-	(try 
-		(get-file api (first (search-file api query)) localname)
-	(catch Exception e
-	 	(println "Cannot download:" query))))
+	(if (.exists (as-file localname))
+		(timbre/info "Skip: " localname)
+		(try 
+			(get-file api (first (search-file api query)) localname)
+		(catch Exception e
+	 		(timbre/error "Cannot download:" query " to " localname)))))

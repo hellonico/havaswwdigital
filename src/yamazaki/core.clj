@@ -1,13 +1,16 @@
 (ns yamazaki.core
+	(:gen-class :main true)
 	(:use clojure.java.io)
-	(:require [yamazaki.box :as box])
-	(:require [ontodev.excel :as xls]))
+	(:require 
+		[yamazaki.box :as box]
+		[yamazaki.log :as log]
+		[yamazaki.bar :as bar]
+		[ontodev.excel :as xls]))
 
-(def WORKBOOK "test/yamazaki.xlsx")
 (def OUTPUT "output")
 
-(defn parse-lines[]
-	(iterator-seq (.rowIterator (.getSheetAt (xls/load-workbook WORKBOOK) 0))))
+(defn parse-lines[workbook]
+	(iterator-seq (.rowIterator (.getSheetAt (xls/load-workbook workbook) 0))))
 
 ; execute
 (defn export-line[line func]
@@ -44,25 +47,34 @@
 		(str (file :org))
 		(str directory-name "/" (file :new))))
 
+(def bar2 (bar/make-progress-bar "" 20 2))
+
 (defn export-line[api line]
 	(let [ 
 		metadata (process-line line)
 		directory-name (str OUTPUT "/" (metadata :directory))
 		directory (as-file directory-name)
 		files (metadata :files)
+		total (count files)
 		]
-		(println "-")
-		(println "Downloading to Folder" directory-name)
+
+		(bar/update-label bar2 directory-name 20)
+		(bar/update-progress bar2 (/ 0 total))
+
 		(.mkdir directory)
-		(doseq [file files]
-			(println "Downloading file:" file)
-			(download-file api file directory-name)
-			)))
+		(loop [files files i 0]
+			(when (seq files)
+			  (download-file api (first files) directory-name)
+			  (bar/update-progress bar2 (/ i total))
+			  (recur (rest files) (inc i))))
+			))
 
 (defn -main[& args]
 	(println "Exporting:" (first args))
 	(.mkdir (as-file OUTPUT))
-	(def lines (parse-lines))
+	(def lines (parse-lines (first args)))
 	(def api (box/init-api))
+	(def bar1 (bar/make-progress-bar "Total: " 20 3))
 	(doseq [row (range 1 36)]
+		(bar/update-progress bar1 (/ row 36))
 		(export-line api (nth lines row))))
